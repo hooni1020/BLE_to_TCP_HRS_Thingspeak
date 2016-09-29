@@ -85,6 +85,9 @@ APP_TIMER_DEF(ble_to_tcps_timer_id);												/**< Publish data timer. */
 #define BUFFER_SIZE					2048
 #define TS_BUFFER_SIZE            100
 
+#define WRITE_API_KEY               "9712R7HQU8SLXQZ8"
+#define CH_FIELD1                       "&field1="
+
 /**@breif Macro to unpack 16bit unsigned UUID from octet stream. */
 #define UUID16_EXTRACT(DST, SRC) \
     do                           \
@@ -903,7 +906,10 @@ void updateThingSpeak(uint32_t tsData)
     memset(ts_buf, 0x00, TS_BUFFER_SIZE);
     memset(asc_buf, 0x00, sizeof(asc_buf));
         
-    strcpy(ts_buf,  "GET /update?api_key=JGMALEDSGTJJ79TT&field1=");
+    strcpy(ts_buf,  "GET /update?api_key=");
+    strcat(ts_buf, WRITE_API_KEY);
+    strcat(ts_buf, CH_FIELD1);
+    
     sprintf((char *)asc_buf, "%d", tsData);
     strcat(ts_buf, (char *)asc_buf);
     strcat(ts_buf, "\r\n\r\n");
