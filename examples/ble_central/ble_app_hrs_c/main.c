@@ -35,6 +35,7 @@
 #include "bsp.h"
 #include "bsp_btn_ble.h"
 #include "nrf_log.h"
+#include "nrf_drv_gpiote.h"
 #include "user_ethernet.h"
 #include "user_spi.h"
 
@@ -49,7 +50,7 @@
 #define BOND_DELETE_ALL_BUTTON_ID  0                                  /**< Button used for deleting all bonded centrals during startup. */
 
 #define APP_TIMER_PRESCALER        0                                  /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_OP_QUEUE_SIZE    2                                  /**< Size of timer operation queues. */
+#define APP_TIMER_OP_QUEUE_SIZE    8                                  /**< Size of timer operation queues. */
 
 #define APPL_LOG                   NRF_LOG_PRINTF                     /**< Logger macro that will be used in this file to do logging over UART or RTT based on nrf_log configuration. */
 #define APPL_LOG_DEBUG             NRF_LOG_PRINTF_DEBUG               /**< Debug logger macro that will be used in this file to do logging of debug information over UART or RTT based on nrf_log configuration. This will only work if DEBUG is defined*/
@@ -75,18 +76,18 @@
 #define UUID16_SIZE                2                                  /**< Size of 16 bit UUID */
 
 
-APP_TIMER_DEF(tcp_con_timer_id);												/**< Publish data timer. */
-#define TCP_CON_INTERVAL             	APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER)	/**< RR interval interval (ticks). */
+APP_TIMER_DEF(doorlock_timer_id);												/**< Publish data timer. */
+#define DOORLOCK_INTERVAL             	APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)	/**< RR interval interval (ticks). */
 
-APP_TIMER_DEF(ble_to_tcps_timer_id);												/**< Publish data timer. */
-#define BLE_TO_TCPS_INTERVAL             	APP_TIMER_TICKS(10000, APP_TIMER_PRESCALER)	/**< RR interval interval (ticks). */
+APP_TIMER_DEF(ubidots_timer_id);												/**< Publish data timer. */
+#define UBIDOTS_INTERVAL             	APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)	/**< RR interval interval (ticks). */
+
 
 #define SOCK_TCPC 1
 #define BUFFER_SIZE					2048
 #define TS_BUFFER_SIZE            100
 
-#define WRITE_API_KEY               "9712R7HQU8SLXQZ8"
-#define CH_FIELD1                       "&field1="
+#define MOTOR_PIN     19
 
 /**@breif Macro to unpack 16bit unsigned UUID from octet stream. */
 #define UUID16_EXTRACT(DST, SRC) \
@@ -98,15 +99,22 @@ APP_TIMER_DEF(ble_to_tcps_timer_id);												/**< Publish data timer. */
     } while (0)
 
 uint8_t tempBuffer[BUFFER_SIZE];
-uint8_t targetIP[4] = {184,106,153,149}; //{184,106,153,149} //{52,200,157,52};
+uint8_t targetIP[4] = {50,23,124,68}; //{184,106,153,149} //{52,200,157,52};
 uint32_t tcp_targetPort = 80;
+
+#define TOKEN "pfOw4nhL05Or33sfXGpsvfb646DxC4"
+#define VARID_DOOR   "584604b2762542280a9a9c0a"
+
+
 uint16_t hr_value;
-char *writeAPIKey = "JGMALEDSGTJJ79TT"; 
+
 volatile static uint8_t data_len;
 static char ts_buf[TS_BUFFER_SIZE];
 static bool tcps_con_flag = false;
+static uint8_t beacon_cnt;
+ble_gap_addr_t peri_peer_addr;
 
-void updateThingSpeak(uint32_t tsData);
+void updateUbidots(uint8_t *tsData, uint8_t ts_len);
 static void user_app_timer_start(void);
 
 /**@brief Variable length data encapsulation in terms of length and pointer to data */
@@ -122,6 +130,8 @@ typedef enum
     BLE_WHITELIST_SCAN,                                              /**< Advertising with whitelist. */
     BLE_FAST_SCAN,                                                   /**< Fast advertising running. */
 } ble_scan_mode_t;
+
+const uint8_t target_uuid[] = {0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78, 0x89, 0x9a, 0xab, 0xbc, 0xcd, 0xde, 0xef, 0xf0};
 
 static ble_db_discovery_t           m_ble_db_discovery;                  /**< Structure used to identify the DB Discovery module. */
 static ble_hrs_c_t                  m_ble_hrs_c;                         /**< Structure used to identify the heart rate client module. */
@@ -375,7 +385,7 @@ static void sleep_mode_enter(void)
 static void on_ble_evt(ble_evt_t * p_ble_evt)
 {
     uint32_t                err_code;
-    const ble_gap_evt_t   * p_gap_evt = &p_ble_evt->evt.gap_evt;
+    ble_gap_evt_t   * p_gap_evt = &p_ble_evt->evt.gap_evt;
 
     switch (p_ble_evt->header.evt_id)
     {
@@ -383,11 +393,48 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         {
             data_t adv_data;
             data_t type_data;
-
+            int8_t rssi;
+            
             // Initialize advertisement report for parsing.
             adv_data.p_data = (uint8_t *)p_gap_evt->params.adv_report.data;
-            adv_data.data_len = p_gap_evt->params.adv_report.dlen;
+            if (!(memcmp(&adv_data.p_data[9], target_uuid, sizeof(target_uuid))))
+            {
+                rssi = p_gap_evt->params.adv_report.rssi;
+                if (rssi > -40)
+                {
+                    memcpy(&peri_peer_addr, &p_gap_evt->params.adv_report.peer_addr, sizeof(peri_peer_addr));
+                    //peri_peer_addr =  &p_gap_evt->params.adv_report.peer_addr;//&p_gap_evt->params.connected.peer_addr;
+            
+                    
+                  
+                    beacon_cnt++;
+                    APPL_LOG("\n\r======================\n\r");
+                    //APPL_LOG(" -> ADV Type : 0x%02X \n\r", adv_data.p_data[1]);
+                    APPL_LOG("[MAC ADDR]:[%02X:%02X:%02X:%02X:%02X:%02X]\r\n",
+                                        peri_peer_addr.addr[0], peri_peer_addr.addr[1], peri_peer_addr.addr[2],
+                                        peri_peer_addr.addr[3], peri_peer_addr.addr[4], peri_peer_addr.addr[5]);
+          
+                    APPL_LOG("[rssi] : %d dbm\r\n", rssi);
 
+                    for(int k=0;k<31;k++)
+                    {
+                          APPL_LOG("%02x",adv_data.p_data[k]);
+                    }
+                    APPL_LOG("\n\r======================\n\r\n\r");
+                    
+                    beacon_cnt = 0;
+                    nrf_gpio_pin_clear(MOTOR_PIN);
+                    err_code = app_timer_start(ubidots_timer_id, UBIDOTS_INTERVAL,NULL);
+                    APP_ERROR_CHECK(err_code);
+                      
+                    err_code = app_timer_stop(doorlock_timer_id);
+                    APP_ERROR_CHECK(err_code);
+                    err_code = app_timer_start(doorlock_timer_id, DOORLOCK_INTERVAL,NULL);
+                    APP_ERROR_CHECK(err_code);
+                    
+                }
+            }
+#if 0
             err_code = adv_report_parse(BLE_GAP_AD_TYPE_16BIT_SERVICE_UUID_MORE_AVAILABLE,
                                         &adv_data,
                                         &type_data);
@@ -438,18 +485,22 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                         {
                             APPL_LOG_DEBUG("[APPL]: Connection Request Failed, reason %d\r\n", err_code);
                         }
-                        else
-                        {
-                            user_app_timer_start();
-                        }
-                        
                         break;
                     }
                 }
             }
+#endif
             break;
         }
+        
+        case BLE_GAP_EVT_RSSI_CHANGED:
+        {
+          int8_t rssi;
+          rssi = p_gap_evt->params.rssi_changed.rssi;
+          APPL_LOG("[rssi] : %x dbm\r\n", rssi);
 
+          break;
+        }
         case BLE_GAP_EVT_TIMEOUT:
             if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
             {
@@ -860,12 +911,13 @@ static void scan_start(void)
 static void buttons_leds_init(bool * p_erase_bonds)
 {
     bsp_event_t startup_event;
-
-    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
+    //uint32_t err_code;
+#if 1
+    uint32_t err_code = bsp_init(BSP_INIT_NONE,
                                  APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
                                  bsp_event_handler);
     APP_ERROR_CHECK(err_code);
-
+#endif
     err_code = bsp_btn_ble_init(NULL, &startup_event);
     APP_ERROR_CHECK(err_code);
 
@@ -891,112 +943,141 @@ static void power_manage(void)
 }
 
 
-void ble_to_tcps(void * p_context)
+void doorlock_timer_handle(void * p_context)
 {
-    if (tcps_con_flag == true)
-        updateThingSpeak(hr_value);
+    nrf_gpio_pin_set(MOTOR_PIN);
 }
 
-
-void updateThingSpeak(uint32_t tsData) 
+void ubidots_timer_handle(void * p_context)
 {
-    int8_t ret;
-    uint8_t asc_buf[50];
-    
-    memset(ts_buf, 0x00, TS_BUFFER_SIZE);
-    memset(asc_buf, 0x00, sizeof(asc_buf));
-        
-    strcpy(ts_buf,  "GET /update?api_key=");
-    strcat(ts_buf, WRITE_API_KEY);
-    strcat(ts_buf, CH_FIELD1);
-    
-    sprintf((char *)asc_buf, "%d", tsData);
-    strcat(ts_buf, (char *)asc_buf);
-    strcat(ts_buf, "\r\n\r\n");
-        
-    APPL_LOG("send data = %s\r\n", ts_buf);
-    ret = send(SOCK_TCPC,  (uint8_t *)ts_buf, strlen(ts_buf));
-        
-    if(ret < 0)  // Send Error occurred (sent data length < 0)
-    {
-        APPL_LOG("Send Error Occurred %d\r\n", ret);
-        close(SOCK_TCPC); // socket close
-    }        
-} 
-
-
-void tcp_con_timer(void * p_context)
-{
-    int32_t ret; // return value for SOCK_ERRORs
-
-   // Port number for TCP client (will be increased)
-    uint16_t any_port = 	50000;
-    
-   // Socket Status Transitions
-   // Check the W5500 Socket n status register (Sn_SR, The 'Sn_SR' controlled by Sn_CR command or Packet send/recv status)
-    switch(getSn_SR(SOCK_TCPC))
-    {
-        case SOCK_ESTABLISHED :
-            if(getSn_IR(SOCK_TCPC) & Sn_IR_CON)	// Socket n interrupt register mask; TCP CON interrupt = connection with peer is successful
-            {
-                APPL_LOG_DEBUG("%d:Connected to - %d.%d.%d.%d : %d\r\n",SOCK_TCPC, targetIP[0], targetIP[1], targetIP[2], targetIP[3], tcp_targetPort);
-                setSn_IR(SOCK_TCPC, Sn_IR_CON);  // this interrupt should be write the bit cleared to '1'
-            }
-            break;
- 
-        case SOCK_CLOSE_WAIT :
-         //APPL_LOG_DEBUG("%d:CloseWait\r\n",sn);
-            if((ret=disconnect(SOCK_TCPC)) != SOCK_OK) APPL_LOG_DEBUG("%d:Socket Closed Fail\r\n", SOCK_TCPC);
-            else tcps_con_flag = false;
-            APPL_LOG_DEBUG("%d:Socket Closed\r\n", SOCK_TCPC);
-            break;
-        
-        case SOCK_INIT :
-            APPL_LOG_DEBUG("%d:Try to connect to the %d.%d.%d.%d : %d\r\n", 
-				        SOCK_TCPC, targetIP[0], targetIP[1], targetIP[2], targetIP[3], tcp_targetPort);
-            if( (ret = connect(SOCK_TCPC, targetIP, tcp_targetPort)) != SOCK_OK) 
-						    APPL_LOG_DEBUG("%d:Socket Connect Fail\r\n", SOCK_TCPC);	//	Try to TCP connect to the TCP server (destination)
-            else tcps_con_flag = true;
-        break;
-
-        case SOCK_CLOSED:
-            tcps_con_flag = false;
-            close(SOCK_TCPC);
-    	      if((ret=socket(SOCK_TCPC, Sn_MR_TCP, any_port++, 0x00)) != SOCK_TCPC) 
-						    APPL_LOG_DEBUG("%d:Socket Open Fail\r\n", SOCK_TCPC); // TCP socket open with 'any_port' port number
-            break;
-						
-        default:
-            break;
-    }
+    updateUbidots(peri_peer_addr.addr, 6);
 }
-
 
 
 static void user_app_timer_init(void)
 {
     uint32_t err_code;
    
-    err_code = app_timer_create(&tcp_con_timer_id, APP_TIMER_MODE_REPEATED, tcp_con_timer);
+    err_code = app_timer_create(&doorlock_timer_id, APP_TIMER_MODE_SINGLE_SHOT, doorlock_timer_handle);
     APP_ERROR_CHECK(err_code);
-    
-   
-    err_code = app_timer_create(&ble_to_tcps_timer_id, APP_TIMER_MODE_REPEATED, ble_to_tcps);
+  
+    err_code = app_timer_create(&ubidots_timer_id, APP_TIMER_MODE_SINGLE_SHOT, ubidots_timer_handle);
     APP_ERROR_CHECK(err_code);
-    
+  
 }
 
 static void user_app_timer_start(void)
 {
     uint32_t err_code;
     
-    err_code = app_timer_start(tcp_con_timer_id, TCP_CON_INTERVAL,NULL);
+    err_code = app_timer_start(doorlock_timer_id, DOORLOCK_INTERVAL,NULL);
     APP_ERROR_CHECK(err_code);
 
-    err_code = app_timer_start(ble_to_tcps_timer_id, BLE_TO_TCPS_INTERVAL, NULL);
-    APP_ERROR_CHECK(err_code);
+    //err_code = app_timer_start(ble_to_tcps_timer_id, BLE_TO_TCPS_INTERVAL, NULL);
+    //APP_ERROR_CHECK(err_code);
 }
 
+/**
+ * @brief Function for configuring: PIN_IN .pin for input, PIN_OUT pin for output, 
+ * and configures GPIOTE to give an interrupt on pin change.
+ */
+static void gpio_init(void)
+{
+    ret_code_t err_code;
+    
+    nrf_gpio_cfg_output(MOTOR_PIN);
+  
+    nrf_gpio_pin_set(MOTOR_PIN);
+#if 0
+    err_code = nrf_drv_gpiote_init();
+    APP_ERROR_CHECK(err_code);
+    
+    nrf_drv_gpiote_out_config_t out_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
+
+    err_code = nrf_drv_gpiote_out_init(MOTOR_PIN, &out_config);
+    nrf_drv_gpiote_out_set(MOTOR_PIN);
+    APP_ERROR_CHECK(err_code);
+#endif
+}
+
+void updateUbidots(uint8_t *tsData, uint8_t ts_len) 
+{
+    int32_t ret;
+    uint8_t value_buf[100];
+    uint32_t tmp=*(uint32_t *)tsData, value_len;
+    
+    printf("tsdata = ");
+    for (uint8_t i=0; i< ts_len; i++)
+    {
+      printf("%d ", tsData[i]);
+    }
+    printf("\r\n");
+    
+
+    if (getSn_SR(SOCK_TCPC) == SOCK_ESTABLISHED)
+    {
+        //ts_buf = (char *)malloc(TS_BUFFER_SIZE);
+        printf("%d:Socket Connected\r\n", SOCK_TCPC);
+        
+        memset(ts_buf, 0x00, TS_BUFFER_SIZE);
+        memset(value_buf, 0x00, sizeof(value_buf));
+        
+        sprintf((char *)value_buf,"{\"value\": %02d%02d%02d%02d%02d%02d}", tsData[0], tsData[1], tsData[2], tsData[3], tsData[4], tsData[5]);   //Copy Temp Data
+        //sprintf((char *)value_buf,"{\"value\": %d}", tmp);   //Copy Temp Data
+      
+        value_len = strlen((char *)value_buf);
+        
+        sprintf(ts_buf,"POST /api/v1.6/variables/%s/values HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Auth-Token: %s\r\nHost: things.ubidots.com\r\n\r\n%s\r\n\r\n",
+        VARID_DOOR, value_len, TOKEN, value_buf);
+
+        printf("send data = %s\r\n", ts_buf);
+        ret = send(SOCK_TCPC,  (uint8_t *)ts_buf, strlen(ts_buf));
+        
+        if(ret < 0)  // Send Error occurred (sent data length < 0)
+        {
+            printf("Send E %d\r\n", ret);
+            close(SOCK_TCPC); // socket close
+        }
+        
+    }        
+    else
+    {
+        close(SOCK_TCPC);
+        if((ret=socket(SOCK_TCPC, Sn_MR_TCP, 50000, 0x00)) != SOCK_TCPC) 
+                 printf("%d:Socket Open Fail\r\n", SOCK_TCPC); // TCP socket open with 'any_port' port number
+        
+        if( (ret = connect(SOCK_TCPC, targetIP, tcp_targetPort)) != SOCK_OK)
+        {
+            printf("%d:Socket Connect Fail\r\n", SOCK_TCPC);	//	Try to TCP connect to the TCP server (destination)
+        }
+        else
+        {
+          //ts_buf = (char *)malloc(TS_BUFFER_SIZE);
+          printf("%d:Socket Connected\r\n", SOCK_TCPC);
+        
+          memset(ts_buf, 0x00, TS_BUFFER_SIZE);
+          memset(value_buf, 0x00, sizeof(value_buf));
+        
+          sprintf((char *)value_buf,"{\"value\": %02d%02d%02d%02d%02d%02d}", tsData[0], tsData[1], tsData[2], tsData[3], tsData[4], tsData[5]);   //Copy Temp Data
+          //sprintf((char *)value_buf,"{\"value\": %d}", tmp);   //Copy Temp Data
+          value_len = strlen((char *)value_buf);
+        
+          sprintf(ts_buf,"POST /api/v1.6/variables/%s/values HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Auth-Token: %s\r\nHost: things.ubidots.com\r\n\r\n%s\r\n\r\n",
+          VARID_DOOR, value_len, TOKEN, value_buf);
+
+          printf("send data = %s\r\n", ts_buf);
+          ret = send(SOCK_TCPC,  (uint8_t *)ts_buf, strlen(ts_buf));
+
+          if(ret < 0)  // Send Error occurred (sent data length < 0)
+          {
+            printf("Send E %d\r\n", ret);
+            close(SOCK_TCPC); // socket close
+          }
+        }
+    }
+    disconnect(SOCK_TCPC);
+    //socket(SOCK_TCPC, Sn_MR_TCP, 50000, 0x00);
+} 
 
 int main(void)
 {
@@ -1004,6 +1085,7 @@ int main(void)
 
     // Initialize.
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, NULL);
+    gpio_init();
     buttons_leds_init(&erase_bonds);
     nrf_log_init();
     APPL_LOG("Heart rate collector example\r\n");
@@ -1015,6 +1097,7 @@ int main(void)
     
     spi0_master_init();
     user_ethernet_init();
+    
 
     user_app_timer_init();
     //user_app_timer_start();

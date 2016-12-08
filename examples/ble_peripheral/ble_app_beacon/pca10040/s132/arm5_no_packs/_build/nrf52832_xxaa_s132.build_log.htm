@@ -1,0 +1,93 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: •ÏVision V5.21.1.0
+Copyright (C) 2016 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: abc abc, abc, LIC=2TTCX-HN38S-LTB3E-57643-7FG8J-LFI6X
+ 
+Tool Versions:
+Toolchain:       MDK-ARM Professional  Version: 5.21a
+Toolchain Path:  C:\Keil_v5\ARM\ARMCC\Bin
+C Compiler:      Armcc.exe V5.06 update 3 (build 300)
+Assembler:       Armasm.exe V5.06 update 3 (build 300)
+Linker/Locator:  ArmLink.exe V5.06 update 3 (build 300)
+Library Manager: ArmAr.exe V5.06 update 3 (build 300)
+Hex Converter:   FromElf.exe V5.06 update 3 (build 300)
+CPU DLL:         
+Dialog DLL:      
+Target DLL:      Segger\JL2CM3.dll V2.99.23.0
+Dialog DLL:      TCM.DLL V1.14.14.0
+ 
+<h2>Project:</h2>
+D:\Penta_Code\2016-11\FW\nRF5_SDK_11.0.0_89a8197\examples\ble_peripheral\ble_app_beacon\pca10040\s132\arm5_no_packs\ble_app_beacon_s132_pca10040.uvprojx
+Project File Date:  11/01/2016
+
+<h2>Output:</h2>
+*** Using Compiler 'V5.06 update 3 (build 300)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
+Rebuild target 'nrf52832_xxaa_s132'
+compiling nrf_delay.c...
+compiling ble_srv_common.c...
+compiling bsp.c...
+compiling app_uart.c...
+compiling ble_advdata.c...
+compiling ble_conn_params.c...
+compiling main.c...
+..\..\..\main.c(208): warning:  #177-D: variable "err_code" was declared but never referenced
+      uint32_t err_code;
+..\..\..\main.c: 1 warning, 0 errors
+compiling app_button.c...
+compiling nrf_drv_common.c...
+compiling app_error_weak.c...
+compiling app_timer.c...
+compiling nrf_drv_uart.c...
+compiling nrf_drv_gpiote.c...
+compiling RTT_Syscalls_KEIL.c...
+compiling SEGGER_RTT.c...
+compiling SEGGER_RTT_printf.c...
+assembling arm_startup_nrf52.s...
+compiling app_error.c...
+compiling nrf_assert.c...
+compiling nrf_log.c...
+compiling app_util_platform.c...
+compiling retarget.c...
+compiling softdevice_handler.c...
+compiling system_nrf52.c...
+linking...
+Program Size: Code=6632 RO-data=1120 RW-data=104 ZI-data=8984  
+FromELF: creating hex file...
+".\_build\nrf52832_xxaa_s132.axf" - 0 Error(s), 1 Warning(s).
+
+<h2>Software Packages used:</h2>
+
+Package Vendor: ARM
+                http://www.keil.com/pack/ARM.CMSIS.4.5.0.pack
+                ARM::CMSIS:CORE:4.3.0
+                CMSIS (Cortex Microcontroller Software Interface Standard)
+   * Component: CORE Version: 4.3.0
+
+Package Vendor: NordicSemiconductor
+                http://developer.nordicsemi.com/nRF5_SDK/pieces/nRF_DeviceFamilyPack/NordicSemiconductor.nRF_DeviceFamilyPack.8.5.0.pack
+                NordicSemiconductor::Device:Startup:8.5.0
+                Nordic Semiconductor nRF ARM devices Device Family Pack.
+   * Component: Startup Version: 8.5.0
+
+<h2>Collection of Component include folders:</h2>
+  D:\Penta_Code\2016-11\FW\nRF5_SDK_11.0.0_89a8197\examples\ble_peripheral\ble_app_beacon\pca10040\s132\arm5_no_packs\RTE
+  C:\Keil_v5\ARM\PACK\ARM\CMSIS\4.5.0\CMSIS\Include
+  C:\Keil_v5\ARM\PACK\NordicSemiconductor\nRF_DeviceFamilyPack\8.5.0\Device\Include
+  C:\Keil_v5\ARM\PACK\NordicSemiconductor\nRF_DeviceFamilyPack\8.9.0\Device\Include
+
+<h2>Collection of Component Files used:</h2>
+
+   * Component: ARM::CMSIS:CORE:4.3.0
+
+   * Component: NordicSemiconductor::Device:Startup:8.5.0
+      Source file:   Device\Source\arm\arm_startup_nrf52.s
+      Source file:   Device\Source\system_nrf52.c
+      Include file:  Device\Include\system_nrf52.h
+Build Time Elapsed:  00:00:05
+</pre>
+</body>
+</html>
